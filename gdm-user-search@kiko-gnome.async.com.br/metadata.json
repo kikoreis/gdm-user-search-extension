@@ -1,0 +1,9 @@
+{
+  "name": "GDM User Search",
+  "description": "Add a search entry above the GDM user list to filter users as you type",
+  "uuid": "gdm-user-search@kiko-gnome.async.com.br",
+  "session-modes": ["gdm"],
+  "shell-version": ["46", "47", "48", "49", "50"],
+  "version": 1,
+  "url": "https://github.com/kikoreis/gdm-user-search-extension"
+}
