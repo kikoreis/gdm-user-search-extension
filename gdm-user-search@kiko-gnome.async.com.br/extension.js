@@ -1,6 +1,5 @@
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
-import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -69,12 +68,7 @@ export default class GdmUserSearchExtension extends Extension {
     }
 
     _getHostname() {
-        try {
-            const f = Gio.File.new_for_path('/proc/sys/kernel/hostname');
-            const [, contents] = f.load_contents(null);
-            return contents.toString().trim() || 'localhost';
-        } catch (_e) {}
-        return 'localhost';
+        return GLib.get_host_name() || 'localhost';
     }
 
     _getIpAddress() {
@@ -100,12 +94,20 @@ export default class GdmUserSearchExtension extends Extension {
             visible: false,
         });
 
-        this._searchEntry.clutter_text.connect('text-changed',
-            () => this._onSearchTextChanged());
-        this._searchEntry.clutter_text.connect('key-press-event',
-            (actor, event) => this._onSearchKeyPress(event));
-        this._searchEntry.clutter_text.connect('activate',
-            () => this._onSearchActivate());
+        const ct = this._searchEntry.clutter_text;
+        this._signalIds.push({
+            obj: ct,
+            id: ct.connect('text-changed', () => this._onSearchTextChanged()),
+        });
+        this._signalIds.push({
+            obj: ct,
+            id: ct.connect('key-press-event',
+                (actor, event) => this._onSearchKeyPress(event)),
+        });
+        this._signalIds.push({
+            obj: ct,
+            id: ct.connect('activate', () => this._onSearchActivate()),
+        });
 
         d._userSelectionBox.insert_child_at_index(this._searchEntry, 0);
 
