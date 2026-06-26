@@ -75,7 +75,8 @@ export default class GdmUserSearchExtension extends Extension {
         try {
             const [ok, out] = GLib.spawn_command_line_sync('hostname -I');
             if (ok && out) {
-                const ips = out.toString().trim().split(/\s+/);
+                const text = new TextDecoder().decode(out);
+                const ips = text.trim().split(/\s+/);
                 const ipv4 = ips.find(ip => ip.includes('.'));
                 return ipv4 || ips[0] || null;
             }
@@ -137,7 +138,7 @@ export default class GdmUserSearchExtension extends Extension {
                 return;
             const [stageW, stageH] = global.stage.get_size();
             const [, , natW, natH] = infoLabel.get_preferred_size();
-            infoLabel.set_position(stageW - natW - 16, stageH - natH - 16);
+            infoLabel.set_position(16, stageH - natH - 16);
         };
         positionInfo();
 
@@ -217,12 +218,18 @@ export default class GdmUserSearchExtension extends Extension {
             first.emit('activate');
     }
 
+    _getUserItems() {
+        const box = this._dialog._userList._box;
+        if (box)
+            return box.get_children().filter(c => c.user);
+        return this._dialog._userList.get_children()
+            .filter(c => c.user);
+    }
+
     _filterItems() {
         let count = 0;
         let first = null;
-        const items = this._dialog._userList._items;
-        for (const userName in items) {
-            const item = items[userName];
+        for (const item of this._getUserItems()) {
             if (_applyFilterToItem(item, this._searchText)) {
                 count++;
                 if (!first)
@@ -236,9 +243,7 @@ export default class GdmUserSearchExtension extends Extension {
         this._searchText = '';
         if (!this._dialog)
             return;
-        const items = this._dialog._userList._items;
-        for (const userName in items) {
-            const item = items[userName];
+        for (const item of this._getUserItems()) {
             item.visible = true;
             item.reactive = true;
             item.can_focus = true;
@@ -248,10 +253,9 @@ export default class GdmUserSearchExtension extends Extension {
     _getFirstVisibleItem() {
         if (!this._dialog)
             return null;
-        const items = this._dialog._userList._items;
-        for (const userName in items) {
-            if (items[userName].visible)
-                return items[userName];
+        for (const item of this._getUserItems()) {
+            if (item.visible)
+                return item;
         }
         return null;
     }
