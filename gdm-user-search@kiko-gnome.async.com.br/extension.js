@@ -32,6 +32,7 @@ function _applyFilterToItem(item, text) {
 
 export default class GdmUserSearchExtension extends Extension {
     enable() {
+        log('gdm-user-search: enable');
         _initTranslations(this.dir.get_path());
 
         this._searchEntry = null;
