@@ -69,19 +69,45 @@ The zip bundle contains a `locale/` subtree with compiled `.mo`
 files.  The install script's `cp` must use `-r` to copy
 directories, or the locale data will be silently skipped.
 
+### global.log is not available
+
+`global.log()` does not exist in the GDM greeter context and
+will crash the extension with "TypeError: global.log is not a
+function".  Use bare `log()` (global scope) instead.
+
 ### Hostname and IP
 
-Hostname is read from `/proc/sys/kernel/hostname` via
-`Gio.File.load_contents()`.  IP addresses are obtained by spawning
-`hostname -I` via `GLib.spawn_command_line_sync()` (the sole reason
-the legacy `imports.gi.GLib` import is needed).  Only the first IPv4
-address is displayed.
+Hostname is read via `GLib.get_host_name()`.  IP addresses are
+obtained by spawning `hostname -I` via
+`GLib.spawn_command_line_sync()` (the sole reason the legacy
+`imports.gi.GLib` import is needed).  Only the first IPv4 address
+is displayed.
 
 ### Overlay label positioning
 
 The info label position is recalculated on every
 `notify::allocation` of `_lockDialogGroup`.  The margin from the
-bottom-right corner is hardcoded at 16px.
+bottom-left corner is hardcoded at 16px.
+
+### Version differences in UserList internals
+
+The `UserList._items` property changed type between GNOME Shell
+versions:
+- GNOME 46: plain object (`this._items = {}`)
+- GNOME 50: `Map` (`this._items = new Map()`)
+
+The user items themselves (UserListItem actors) live in the inner
+`St.BoxLayout` (`_box`), not directly in the `St.ScrollView`.  To
+iterate user items across all versions, traverse via `_box`:
+
+```js
+const box = this._dialog._userList._box;
+if (box)
+    return box.get_children().filter(c => c.user);
+```
+
+The `UserList.get_children()` method returns scroller internals
+(scrollbars, viewport), not the user items themselves.
 
 ### Session modes
 
@@ -97,10 +123,14 @@ build`.
 
 ## Debugging
 
-Restart GDM and check journalctl:
+Restart GDM and check logs.  The GDM greeter's unit varies by
+distribution and version:
 
-```bash
-journalctl -u gdm -b --no-pager | grep gdm-user-search
-```
+- Ubuntu 24.04 (X11 GDM): `journalctl -u gdm -b`
+- Ubuntu 26.04 (Wayland GDM): `journalctl -u user@$(id -u gdm-greeter).service -b`
 
-There is no way to test GDM extensions from a user session.
+Or find the greeter PID (`ps aux | grep 'gnome-shell.*mode=gdm'`)
+then `journalctl -b _PID=<pid>`.
+
+In all cases pipe through `grep gdm-user-search`.  There is no way
+to test GDM extensions from a user session.
