@@ -114,6 +114,27 @@ The `UserList.get_children()` method returns scroller internals
 Metadata must include `"session-modes": ["gdm"]` to prevent
 activation on the lock screen or user session.
 
+### disable-user-extensions in GDM user dconf
+
+Ubuntu may ship the GDM greeter with `disable-user-extensions=true`
+in the `gdm` system user's personal dconf database
+(`~gdm/.config/dconf/user`).  This causes `_getEnabledExtensions()`
+to only load "mode extensions" from `Main.sessionMode.enabledExtensions`,
+ignoring `enabled-extensions` set via `system-db:gdm` — even for
+system-installed extensions.
+
+The GDM dconf profile chain (`user-db:user` before `system-db:gdm`)
+means the personal database takes priority over our system-wide
+dconf file.  The fix is to reset the key in the user database:
+
+```bash
+sudo -u gdm dbus-run-session \
+    dconf reset /org/gnome/shell/disable-user-extensions
+```
+
+`install.sh` does this automatically for both `gdm` and
+`gdm-greeter` users when the key is present in their personal dconf.
+
 ## i18n
 
 The extension uses `imports.gettext` with UUID as the domain. `.mo`

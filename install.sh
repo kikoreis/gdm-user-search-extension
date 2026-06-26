@@ -28,6 +28,14 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 ZIP_NAME="$UUID.shell-extension.zip"
 
 if [[ -d "$SCRIPT_DIR/$UUID" ]]; then
+    # Compile translations if po/ exists but .mo files missing
+    if [[ -d "$SCRIPT_DIR/po" ]]; then
+        MO_EXISTS=$(ls "$SCRIPT_DIR/$UUID/locale/"*.mo 2>/dev/null | head -1)
+        if [[ -z "$MO_EXISTS" ]]; then
+            echo "  Compiling translations..."
+            make -C "$SCRIPT_DIR" mo 2>/dev/null || echo "  (msgfmt not available, skipping i18n)"
+        fi
+    fi
     cp -r "$SCRIPT_DIR/$UUID"/* "$INSTALL_DIR/"
 elif [[ -f "$SCRIPT_DIR/extension.js" ]]; then
     cp "$SCRIPT_DIR"/extension.js "$INSTALL_DIR/"
@@ -66,6 +74,21 @@ fi
 dconf update
 echo "  dconf updated — extension enabled for GDM"
 
+# The gdm user's personal dconf can hold disable-user-extensions=true
+# which prevents our extension from loading.  Reset it.
+for GDM_USER in gdm gdm-greeter; do
+    GDM_HOME=$(getent passwd "$GDM_USER" 2>/dev/null | cut -d: -f6)
+    GDM_DCONF_USER="$GDM_HOME/.config/dconf/user"
+    if [[ -f "$GDM_DCONF_USER" ]]; then
+        if grep -aq 'disable-user-extensions' "$GDM_DCONF_USER" 2>/dev/null; then
+            echo "  Clearing disable-user-extensions in $GDM_USER dconf..."
+            sudo -u "$GDM_USER" dbus-run-session \
+                dconf reset /org/gnome/shell/disable-user-extensions \
+                2>/dev/null || true
+        fi
+    fi
+done
+
 echo ""
 echo "--- Verification ---"
 
@@ -103,9 +126,16 @@ else
     FAIL=1
 fi
 
+LOCALE_FILES=$(find "$INSTALL_DIR/locale" -name '*.mo' 2>/dev/null | wc -l)
+if [[ "$LOCALE_FILES" -gt 0 ]]; then
+    echo "  [OK] $LOCALE_FILES .mo files installed"
+else
+    echo "  [WARN] No .mo files found — translations won't work"
+fi
+
 echo ""
 if [[ $FAIL -eq 0 ]]; then
-    echo "All checks passed. Ready to reboot."
+    echo "All checks passed. Restart GDM: sudo systemctl restart gdm"
 else
     echo "Some checks failed — review errors above."
     exit 1
