@@ -3,15 +3,30 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 
+log('gdm-user-search: module load start');
 const GLib = imports.gi.GLib;
 const Gettext = imports.gettext;
+log('gdm-user-search: module load end');
 
 let _ = s => s;
 
 function _initTranslations(dir) {
     const domain = 'gdm-user-search@kiko-gnome.async.com.br';
-    Gettext.bindtextdomain(domain, dir + '/locale');
+    const localeDir = dir + '/locale';
+    Gettext.bindtextdomain(domain, localeDir);
     _ = Gettext.domain(domain).gettext;
+    log(`gdm-user-search: i18n domain=${domain} localeDir=${localeDir}`);
+    log(`gdm-user-search: i18n languages=${GLib.get_language_names()}`);
+    // Check that .mo files actually exist for the requested locale(s)
+    for (const lang of GLib.get_language_names()) {
+        const tag = lang.split('.')[0]; // strip charset suffix
+        const moPath = `${localeDir}/${tag}/LC_MESSAGES/${domain}.mo`;
+        if (GLib.file_test(moPath, GLib.FileTest.EXISTS)) {
+            log(`gdm-user-search: i18n found ${moPath}`);
+            return;
+        }
+    }
+    log(`gdm-user-search: i18n WARNING no .mo found for any of ${GLib.get_language_names()}`);
 }
 
 function _itemMatchesFilter(item, text) {

@@ -33,7 +33,10 @@ if [[ -d "$SCRIPT_DIR/$UUID" ]]; then
         MO_EXISTS=$(ls "$SCRIPT_DIR/$UUID/locale/"*.mo 2>/dev/null | head -1)
         if [[ -z "$MO_EXISTS" ]]; then
             echo "  Compiling translations..."
-            make -C "$SCRIPT_DIR" mo 2>/dev/null || echo "  (msgfmt not available, skipping i18n)"
+            make -C "$SCRIPT_DIR" mo || {
+                echo "ERROR: Failed to compile translations (install gettext/gettext-devel)"
+                exit 1
+            }
         fi
     fi
     cp -r "$SCRIPT_DIR/$UUID"/* "$INSTALL_DIR/"
