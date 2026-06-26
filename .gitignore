@@ -1,5 +1,6 @@
 *.shell-extension.zip
-locale/
+# .mo files are committed; only ignore the build artifact zip
+
 *~
 *.swp
 .DS_Store

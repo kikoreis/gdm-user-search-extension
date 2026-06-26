@@ -28,17 +28,6 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 ZIP_NAME="$UUID.shell-extension.zip"
 
 if [[ -d "$SCRIPT_DIR/$UUID" ]]; then
-    # Compile translations if po/ exists but .mo files missing
-    if [[ -d "$SCRIPT_DIR/po" ]]; then
-        MO_EXISTS=$(ls "$SCRIPT_DIR/$UUID/locale/"*.mo 2>/dev/null | head -1)
-        if [[ -z "$MO_EXISTS" ]]; then
-            echo "  Compiling translations..."
-            make -C "$SCRIPT_DIR" mo || {
-                echo "ERROR: Failed to compile translations (install gettext/gettext-devel)"
-                exit 1
-            }
-        fi
-    fi
     cp -r "$SCRIPT_DIR/$UUID"/* "$INSTALL_DIR/"
 elif [[ -f "$SCRIPT_DIR/extension.js" ]]; then
     cp "$SCRIPT_DIR"/extension.js "$INSTALL_DIR/"
