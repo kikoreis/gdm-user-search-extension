@@ -144,6 +144,17 @@ build`.
 
 ## Debugging
 
+### Enabling verbose extension logging
+
+To see "Loading extension" / "Changing state" messages from the
+GDM greeter's gnome-shell, set `G_MESSAGES_DEBUG=all` in
+`/etc/environment` and **reboot**.  The gnome-shell process
+inherits its environment from the GDM launch environment, not from
+the user's session or PAM, so a simple `systemctl restart gdm` is
+not sufficient — only a full reboot propagates the change.
+
+### Reading logs
+
 Restart GDM and check logs.  The GDM greeter's unit varies by
 distribution and version:
 
