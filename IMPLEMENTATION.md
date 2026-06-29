@@ -114,26 +114,85 @@ The `UserList.get_children()` method returns scroller internals
 Metadata must include `"session-modes": ["gdm"]` to prevent
 activation on the lock screen or user session.
 
-### disable-user-extensions in GDM user dconf
+### disable-user-extensions in greeter dconf
 
-Ubuntu may ship the GDM greeter with `disable-user-extensions=true`
-in the `gdm` system user's personal dconf database
-(`~gdm/.config/dconf/user`).  This causes `_getEnabledExtensions()`
-to only load "mode extensions" from `Main.sessionMode.enabledExtensions`,
-ignoring `enabled-extensions` set via `system-db:gdm` — even for
-system-installed extensions.
+The GDM greeter's personal dconf database can hold
+`disable-user-extensions=true`, which silently blocks **all**
+GDM-mode extensions from reaching ACTIVE state.  The extension
+goes straight to INITIALIZED — the module is never even imported.
 
-The GDM dconf profile chain (`user-db:user` before `system-db:gdm`)
-means the personal database takes priority over our system-wide
-dconf file.  The fix is to reset the key in the user database:
+**Mechanism.** In `extensionSystem.js`, `_getEnabledExtensions()`:
+
+```js
+if (!global.settings.get_boolean(DISABLE_USER_EXTENSIONS_KEY))
+    extensions = extensions.concat(
+        global.settings.get_strv(ENABLED_EXTENSIONS_KEY));
+```
+
+When `disable-user-extensions=true`, the `enabled-extensions` key
+is ignored entirely.  Our UUID never enters `_enabledExtensions`,
+so `loadExtension()` sets `INITIALIZED` without importing the
+module or calling `enable()`.
+
+**Why it is hard to find.** There is no log message when
+`disable-user-extensions` blocks the `enabled-extensions` key.
+The extension silently lands at INITIALIZED.  gnome-shell's `Eval`
+D-Bus method is disabled in GDM mode (returns `false, ''`), so the
+runtime state cannot be inspected via D-Bus.  The only way to
+confirm the live value is GDB:
+
+```
+set $s = (void*)g_settings_new("org.gnome.shell")
+set $d = g_settings_get_boolean($s, "disable-user-extensions")
+printf "disable-user = %d\n", $d
+```
+
+**The greeter dconf path is not $HOME.** GDM sets
+`XDG_CONFIG_HOME=/var/lib/gdm3/seat<NN>/config` at runtime, so the
+personal dconf database lives at
+`/var/lib/gdm3/seat0/config/dconf/user`, **not**
+`~gdm-greeter/.config/dconf/user`.  The `gdm-greeter` user's home
+(`/run/gdm3/home/gdm-greeter`) is a tmpfs path with no persistent
+dconf.  Checking `getent passwd gdm-greeter` and looking at
+`$HOME/.config/dconf/user` will find nothing.
+
+**Upgrade-specific.** This stale key is a leftover from 24.04
+upgrades to 26.04.  Fresh 26.04 installs do not have the
+`/var/lib/gdm3/seat0/config/dconf/user` file at all.  The
+discrepancy between upgraded and fresh installs makes the bug
+reproducible only on upgraded systems.
+
+**Confirming in the filesystem:**
 
 ```bash
-sudo -u gdm dbus-run-session \
+sudo strings /var/lib/gdm3/seat0/config/dconf/user | grep disable-user
+```
+
+**The dconf profile chain** for the greeter (from
+`/etc/dconf/profile/gdm`):
+
+1. `user-db:user` → `/var/lib/gdm3/seat0/config/dconf/user`
+   (highest priority — holds the stale key)
+2. `system-db:gdm` → `/etc/dconf/db/gdm` (where install.sh writes
+   `enabled-extensions`)
+3. `file-db:/usr/share/gdm/greeter-dconf-defaults`
+
+Layer 1 takes priority, so `disable-user-extensions=true` in the
+personal database overrides everything in layer 2.
+
+**Fix.** Reset the key with the correct `XDG_CONFIG_HOME`:
+
+```bash
+sudo -u gdm-greeter \
+    XDG_CONFIG_HOME=/var/lib/gdm3/seat0/config \
+    DCONF_PROFILE=gdm \
+    dbus-run-session \
     dconf reset /org/gnome/shell/disable-user-extensions
 ```
 
-`install.sh` does this automatically for both `gdm` and
-`gdm-greeter` users when the key is present in their personal dconf.
+`install.sh` checks both `$HOME/.config/dconf/user` and
+`/var/lib/gdm3/seat*/config/dconf/user` (globbed for multi-seat)
+and resets the key when found.
 
 ## i18n
 
