@@ -66,18 +66,42 @@ fi
 dconf update
 echo "  dconf updated — extension enabled for GDM"
 
-# The gdm user's personal dconf can hold disable-user-extensions=true
-# which prevents our extension from loading.  Reset it.
+# The greeter's personal dconf can hold disable-user-extensions=true
+# which silently blocks ALL GDM-mode extensions from reaching ACTIVE.
+# This is a common stale leftover after 24.04 -> 26.04 upgrades.
+#
+# The greeter dconf lives at $XDG_CONFIG_HOME/dconf/user, NOT
+# $HOME/.config/dconf/user.  GDM sets XDG_CONFIG_HOME to
+# /var/lib/gdm3/seat<NN>/config at runtime.  Check both paths.
+
+DCONF_RESET_PATH=/org/gnome/shell/disable-user-extensions
+
+# Path 1: traditional $HOME/.config/dconf/user
 for GDM_USER in gdm gdm-greeter; do
     GDM_HOME=$(getent passwd "$GDM_USER" 2>/dev/null | cut -d: -f6)
     GDM_DCONF_USER="$GDM_HOME/.config/dconf/user"
     if [[ -f "$GDM_DCONF_USER" ]]; then
         if grep -aq 'disable-user-extensions' "$GDM_DCONF_USER" 2>/dev/null; then
-            echo "  Clearing disable-user-extensions in $GDM_USER dconf..."
+            echo "  Clearing disable-user-extensions in $GDM_USER home dconf..."
             sudo -u "$GDM_USER" dbus-run-session \
-                dconf reset /org/gnome/shell/disable-user-extensions \
+                dconf reset "$DCONF_RESET_PATH" \
                 2>/dev/null || true
         fi
+    fi
+done
+
+# Path 2: /var/lib/gdm3/seat*/config/dconf/user (greeter path)
+for SEAT_DCONF in /var/lib/gdm3/seat*/config/dconf/user; do
+    [[ -f "$SEAT_DCONF" ]] || continue
+    if grep -aq 'disable-user-extensions' "$SEAT_DCONF" 2>/dev/null; then
+        SEAT_CONFIG=$(dirname "$(dirname "$SEAT_DCONF")")
+        echo "  Clearing disable-user-extensions in $SEAT_DCONF..."
+        sudo -u gdm-greeter \
+            XDG_CONFIG_HOME="$SEAT_CONFIG" \
+            DCONF_PROFILE=gdm \
+            dbus-run-session \
+            dconf reset "$DCONF_RESET_PATH" \
+            2>/dev/null || true
     fi
 done
 
@@ -123,6 +147,45 @@ if [[ "$LOCALE_FILES" -gt 0 ]]; then
     echo "  [OK] $LOCALE_FILES .mo files installed"
 else
     echo "  [WARN] No .mo files found — translations won't work"
+fi
+
+# Check greeter dconf for stale disable-user-extensions.
+# Try reading the live greeter's XDG_CONFIG_HOME from /proc,
+# fall back to globbing /var/lib/gdm3/seat*/config/dconf/user.
+GREETER_DCONF_DIRS=()
+GREETER_PID=$(pgrep -u gdm-greeter -f gnome-shell 2>/dev/null | head -1)
+if [[ -n "$GREETER_PID" ]] && [[ -r "/proc/$GREETER_PID/environ" ]]; then
+    GREETER_XDG=$(tr '\0' '\n' < "/proc/$GREETER_PID/environ" \
+        | grep '^XDG_CONFIG_HOME=' | cut -d= -f2-)
+    if [[ -n "$GREETER_XDG" ]]; then
+        GREETER_DCONF_DIRS+=("$GREETER_XDG/dconf")
+    fi
+else
+    # Fall back to glob (covers multi-seat and no-greeter-running cases)
+    for SEAT_DCONF in /var/lib/gdm3/seat*/config/dconf; do
+        [[ -d "$SEAT_DCONF" ]] || continue
+        GREETER_DCONF_DIRS+=("$SEAT_DCONF")
+    done
+fi
+
+DCONF_STALE_FOUND=0
+for DCONF_DIR in "${GREETER_DCONF_DIRS[@]}"; do
+    DCONF_USER="$DCONF_DIR/user"
+    [[ -f "$DCONF_USER" ]] || continue
+    if grep -aq 'disable-user-extensions' "$DCONF_USER" 2>/dev/null; then
+        echo "  [FAIL] stale disable-user-extensions in $DCONF_USER"
+        DCONF_STALE_FOUND=1
+    else
+        echo "  [OK] greeter dconf clean: $DCONF_USER"
+    fi
+done
+if [[ $DCONF_STALE_FOUND -ne 0 ]]; then
+    FAIL=1
+    echo "         Manual fix:"
+    echo "           sudo -u gdm-greeter \\"
+    echo "             XDG_CONFIG_HOME=<seat-config-dir> \\"
+    echo "             DCONF_PROFILE=gdm dbus-run-session \\"
+    echo "             dconf reset /org/gnome/shell/disable-user-extensions"
 fi
 
 echo ""
